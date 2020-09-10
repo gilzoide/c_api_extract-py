@@ -25,9 +25,6 @@ class Visitor:
 
         visit_queue = list(tu.cursor.get_children())
         self._visit(visit_queue, header_path)
-        pprint(self.records)
-        pprint(self.enums)
-        pprint(self.functions)
 
     def _visit(self, visit_queue, header_name):
         # headers = set ()

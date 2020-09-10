@@ -5,6 +5,7 @@ import clang.cindex as clang
 from Decl import Decl
 
 import re
+from collections import OrderedDict
 
 
 class TypeError(Exception):
@@ -176,6 +177,9 @@ class RecordType (Type):
     def __repr__(self):
         return 'RecordType("{0!s}", {0.fields!s})'.format(self)
 
+    def fields_json(self):
+        return [(f[0], str(f[1])) for f in self.fields]
+
     @staticmethod
     def from_type(ty):
         fields = []
@@ -204,7 +208,7 @@ class Enum (Type):
 
     @staticmethod
     def from_type(ty):
-        return Type.remember_type(Enum(ty.spelling, {}))
+        return Type.remember_type(Enum(ty.spelling, OrderedDict()))
 
 
 def getarg_types(ty):

@@ -10,14 +10,23 @@ known_functions = {}
 class Function(Decl):
     """Function declaration, with name, and types (parameters and return)"""
 
-    def __init__(self, symbol, ret_type, arg_types):
+    def __init__(self, symbol, ret_type, arguments):
         Decl.__init__(self, symbol)
         self.ret_type = ret_type
-        self.arg_types = arg_types
-        self.num_args = len(arg_types)
+        self.arguments = arguments
+        self.num_args = len(arguments)
+
+    def __str__(self):
+        return self.symbol
 
     def __repr__(self):
-        return 'Function("{}", {}, {})'.format(self.symbol, self.ret_type, self.arg_types)
+        return 'Function("{}", {}, {})'.format(self.symbol, self.ret_type, self.arguments)
+
+    def return_args_json(self):
+        return {
+            'return_type': str(self.ret_type),
+            'arguments': [(str(arg[0]), str(arg[1])) for arg in self.arguments],
+        }
 
     @staticmethod
     def remember_function(func):
@@ -32,5 +41,5 @@ def from_cursor(cur):
         return memoized
 
     ret_type = Type.from_type(cur.result_type)
-    arg_types = [Type.from_type(a.type) for a in cur.get_arguments()]
-    return Function.remember_function(Function(name, ret_type, arg_types))
+    arguments = [(Type.from_type(a.type), a.spelling) for a in cur.get_arguments()]
+    return Function.remember_function(Function(name, ret_type, arguments))
