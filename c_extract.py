@@ -5,10 +5,10 @@ import Printer
 
 doc = """
 Usage:
-  c_extract.py <input> [-b <base_path>] [<clang_args>...]
+  c_extract.py <input> [--compact] [<clang_args>...]
 
 Options:
-  -b <base_path>, --base <base_path>    Base path were 
+  -c, --compact    Write minified JSON.
 """
 
 
@@ -16,7 +16,7 @@ def main():
     opts = docopt(doc, options_first=True)
     visitor = Visitor()
     visitor.parse_header(opts['<input>'], opts['<clang_args>'])
-    Printer.printVisitor(visitor)
+    Printer.printVisitor(visitor, opts.get('--compact'))
 
 
 if __name__ == '__main__':
