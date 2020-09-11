@@ -83,7 +83,6 @@ Output is a list of definitions, each kind with it's format:
 ```
 
 ## TODO
-- Add setup.py
 - Fix variable and function `verbatim` code
 - Add support for `#define`d constants
-- Check if it supports nested anonymous struct|unions
+- Add support for nested anonymous struct|unions

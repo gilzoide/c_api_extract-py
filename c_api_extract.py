@@ -1,9 +1,11 @@
 """
 Usage:
   c_api_extract.py [--compact] <input> [-- <clang_args>...]
+  c_api_extract.py -h
 
 Options:
   -c, --compact    Write minified JSON.
+  -h, --help       Show this help message.
 """
 
 import json
