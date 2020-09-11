@@ -12,7 +12,7 @@ from docopt import docopt
 import clang.cindex as clang
 
 
-def verbatim_tokens(cursor):
+def verbatim_code(cursor):
     return ' '.join(t.spelling for t in cursor.get_tokens() if not t.spelling.startswith('/'))
 
 
@@ -43,6 +43,7 @@ class Visitor:
                 kind='var',
                 name=cursor.spelling,
                 type=cursor.type.spelling,
+                verbatim=verbatim_code(cursor),
             ))
         elif cursor.kind == clang.CursorKind.TYPEDEF_DECL:
             definition = self.get_typedef(cursor)
@@ -53,7 +54,7 @@ class Visitor:
                 kind='typedef',
                 name=cursor.spelling,
                 type=cursor.underlying_typedef_type.spelling,
-                verbatim=verbatim_tokens(cursor),
+                verbatim=verbatim_code(cursor),
             ))
         elif cursor.kind == clang.CursorKind.ENUM_DECL:
             enum = dict(
@@ -62,7 +63,7 @@ class Visitor:
                 type=cursor.enum_type.spelling,
                 values=[(c.spelling, c.enum_value)
                         for c in cursor.get_children()],
-                verbatim=verbatim_tokens(cursor),
+                verbatim=verbatim_code(cursor),
             )
             self.defs.append(enum)
             self.add_typedef(cursor, enum)
@@ -72,7 +73,7 @@ class Visitor:
                 name=cursor.spelling,
                 fields=[(f.type.spelling, f.spelling)
                         for f in cursor.type.get_fields()],
-                verbatim=verbatim_tokens(cursor),
+                verbatim=verbatim_code(cursor),
             )
             self.defs.append(struct)
             self.add_typedef(cursor, struct)
@@ -82,7 +83,7 @@ class Visitor:
                 name=cursor.spelling,
                 fields=[(f.type.spelling, f.spelling)
                         for f in cursor.type.get_fields()],
-                verbatim=verbatim_tokens(cursor),
+                verbatim=verbatim_code(cursor),
             )
             self.defs.append(union)
             self.add_typedef(cursor, union)
@@ -94,6 +95,7 @@ class Visitor:
                 arguments=[(a.type.spelling, a.spelling)
                            for a in cursor.get_arguments()],
                 variadic=cursor.type.kind == clang.TypeKind.FUNCTIONPROTO and cursor.type.is_function_variadic(),
+                verbatim=verbatim_code(cursor),
             )
             self.defs.append(function)
 
