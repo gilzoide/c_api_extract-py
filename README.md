@@ -16,7 +16,7 @@ Or using Python:
 import c_api_extract
 
 # `definitions` follow the same format as output JSON
-definitions = c_api_extract.definitions_from_header('header_name.h', ['-Dclang_args'])
+definitions = c_api_extract.definitions_from_header('header_name.h', ['-Dlist_of_clang_args'])
 ```
 
 `c_api_extract.py` works on a single header file for simplicity.
@@ -24,14 +24,15 @@ If you need more than one header processed, create a new one and `#include` them
 
 
 ## Output format
-Output is a list of definitions, each kind it's format:
+Output is a list of definitions, each kind with it's format:
 
 ```python
 # variable definitions
 {
   'kind': 'var',
-  'name': '<name>',  # variable name
-  'type': '<type>'   # type spelling as written in source code
+  'name': '<name>',     # variable name
+  'type': '<type>'      # type name as written in source code
+  'verbatim': '<code>'  # verbatim C code that can be used for variable definition
 }
 
 # enum definitions
@@ -80,3 +81,9 @@ Output is a list of definitions, each kind it's format:
   'verbatim': '<code>'       # verbatim C code that can be used for function definition
 }
 ```
+
+## TODO
+- Add setup.py
+- Fix variable and function `verbatim` code
+- Add support for `#define`d constants
+- Check if it supports nested anonymous struct|unions
