@@ -83,6 +83,6 @@ Output is a list of definitions, each kind with it's format:
 ```
 
 ## TODO
-- Fix variable and function `verbatim` code
+- Add support for filtering which headers are processed
 - Add support for `#define`d constants
 - Add support for nested anonymous struct|unions
