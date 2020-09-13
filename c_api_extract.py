@@ -38,11 +38,11 @@ class Visitor:
     def get_typedef(self, cursor):
         return self.typedefs.get(cursor.underlying_typedef_type.get_declaration().hash)
 
-    def verbatim_code(self, cursor):
+    def source_for_cursor(self, cursor):
         source_range = cursor.extent
         start = source_range.start
         end = source_range.end
-        filename = start.file.name
+        filename = (start.file or end.file or cursor.location.file).name
         if filename not in self.open_files:
             self.open_files[filename] = open(filename, 'r')
         f = self.open_files[filename]
@@ -50,12 +50,15 @@ class Visitor:
         return f.read(end.offset - start.offset)
 
     def process(self, cursor):
+        if not cursor.location.file:
+            return
+
         if cursor.kind == clang.CursorKind.VAR_DECL:
             self.defs.append(dict(
                 kind='var',
                 name=cursor.spelling,
                 type=cursor.type.spelling,
-                verbatim=self.verbatim_code(cursor),
+                source=self.source_for_cursor(cursor),
             ))
         elif cursor.kind == clang.CursorKind.TYPEDEF_DECL:
             definition = self.get_typedef(cursor)
@@ -66,7 +69,7 @@ class Visitor:
                 kind='typedef',
                 name=cursor.spelling,
                 type=cursor.underlying_typedef_type.spelling,
-                verbatim=self.verbatim_code(cursor),
+                source=self.source_for_cursor(cursor),
             ))
         elif cursor.kind == clang.CursorKind.ENUM_DECL:
             enum = dict(
@@ -75,7 +78,7 @@ class Visitor:
                 type=cursor.enum_type.spelling,
                 values=[(c.spelling, c.enum_value)
                         for c in cursor.get_children()],
-                verbatim=self.verbatim_code(cursor),
+                source=self.source_for_cursor(cursor),
             )
             self.defs.append(enum)
             self.add_typedef(cursor, enum)
@@ -85,7 +88,7 @@ class Visitor:
                 name=cursor.spelling,
                 fields=[(f.type.spelling, f.spelling)
                         for f in cursor.type.get_fields()],
-                verbatim=self.verbatim_code(cursor),
+                source=self.source_for_cursor(cursor),
             )
             self.defs.append(struct)
             self.add_typedef(cursor, struct)
@@ -95,7 +98,7 @@ class Visitor:
                 name=cursor.spelling,
                 fields=[(f.type.spelling, f.spelling)
                         for f in cursor.type.get_fields()],
-                verbatim=self.verbatim_code(cursor),
+                source=self.source_for_cursor(cursor),
             )
             self.defs.append(union)
             self.add_typedef(cursor, union)
@@ -107,7 +110,7 @@ class Visitor:
                 arguments=[(a.type.spelling, a.spelling)
                            for a in cursor.get_arguments()],
                 variadic=cursor.type.kind == clang.TypeKind.FUNCTIONPROTO and cursor.type.is_function_variadic(),
-                verbatim=self.verbatim_code(cursor),
+                source=self.source_for_cursor(cursor),
             )
             self.defs.append(function)
 
