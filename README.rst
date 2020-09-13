@@ -13,7 +13,8 @@ Usage
 -----
 Calling from console::
 
-    $ c_api_extract.py [--compact] <input> [-- <clang_args>...]
+    $ c_api_extract.py <input> [-p <pattern>...] [-c] [-- <clang_args>...]
+
 
 Or using Python:
 
@@ -91,6 +92,5 @@ Output is a list of definitions, each kind with it's format:
 
 TODO
 ----
-- Add support for filtering which headers are processed
 - Add support for constants defined using `#define` 
 - Add support for nested anonymous struct|unions

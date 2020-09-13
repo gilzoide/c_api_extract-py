@@ -1,19 +1,25 @@
 """
 Usage:
-  c_api_extract.py [--compact] <input> [-- <clang_args>...]
+  c_api_extract.py <input> [-p <pattern>...] [-c] [-- <clang_args>...]
   c_api_extract.py -h
 
 Options:
-  -c, --compact    Write minified JSON.
-  -h, --help       Show this help message.
+  -c, --compact                        Write minified JSON.
+  -h, --help                           Show this help message.
+  -p <pattern>, --pattern=<pattern>    Only process headers with names that match any of the given regex patterns.
+                                       Matches are tested using `re.search`, so patterns are not anchored by default.
+                                       This may be used to avoid processing standard headers and dependencies headers.
 """
 
 import json
+import re
 from signal import signal, SIGPIPE, SIG_DFL
 
 from docopt import docopt
 import clang.cindex as clang
 
+
+__version__ = 0.2
 
 class Visitor:
     def __init__(self):
@@ -21,7 +27,9 @@ class Visitor:
         self.typedefs = {}
         self.index = clang.Index.create()
 
-    def parse_header(self, header_path, clang_args=[]):
+    match_all_re = re.compile('.*')
+    def parse_header(self, header_path, clang_args=[], allowed_patterns=[]):
+        allowed_patterns = [re.compile(p) for p in allowed_patterns] or [Visitor.match_all_re]
         tu = self.index.parse(
             header_path,
             args=clang_args,
@@ -29,7 +37,7 @@ class Visitor:
         )
         self.open_files = {}
         for cursor in tu.cursor.get_children():
-            self.process(cursor)
+            self.process(cursor, allowed_patterns)
         del self.open_files
 
     def add_typedef(self, cursor, ty):
@@ -49,8 +57,12 @@ class Visitor:
         f.seek(start.offset)
         return f.read(end.offset - start.offset)
 
-    def process(self, cursor):
-        if not cursor.location.file:
+    def process(self, cursor, allowed_patterns):
+        try:
+            filename = cursor.location.file.name
+            if not any(pattern.search(filename) for pattern in allowed_patterns):
+                return
+        except AttributeError:
             return
 
         if cursor.kind == clang.CursorKind.VAR_DECL:
@@ -124,7 +136,7 @@ def definitions_from_header(*args, **kwargs):
 def main():
     opts = docopt(__doc__)
     definitions = definitions_from_header(
-        opts['<input>'], opts['<clang_args>'])
+        opts['<input>'], opts['<clang_args>'], opts['--pattern'])
     signal(SIGPIPE, SIG_DFL)
     print(json.dumps(definitions, indent=None if opts.get('--compact') else 2))
 

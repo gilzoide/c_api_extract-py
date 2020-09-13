@@ -6,7 +6,6 @@ with open('README.rst', encoding='utf-8') as readme:
 
 setup(
     name='c_api_extract',
-    version='0.1',
     description='Automatic extraction of C APIs from header files using libclang',
     long_description=long_description,
 
@@ -17,7 +16,6 @@ setup(
         'Source': 'https://github.com/gilzoide/c_api_extract-py',
         'Tracker': 'https://github.com/gilzoide/c_api_extract-py/issues',
     },
-
 
     license='Unlicense',
     classifiers=[
