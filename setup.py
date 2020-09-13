@@ -1,7 +1,7 @@
 from codecs import open
 from setuptools import setup
 
-with open('README.md', encoding='utf-8') as readme:
+with open('README.rst', encoding='utf-8') as readme:
     long_description = readme.read()
 
 setup(
