@@ -9,6 +9,7 @@ Options:
 """
 
 import json
+from signal import signal, SIGPIPE, SIG_DFL
 
 from docopt import docopt
 import clang.cindex as clang
@@ -121,6 +122,7 @@ def main():
     opts = docopt(__doc__)
     definitions = definitions_from_header(
         opts['<input>'], opts['<clang_args>'])
+    signal(SIGPIPE, SIG_DFL)
     print(json.dumps(definitions, indent=None if opts.get('--compact') else 2))
 
 
