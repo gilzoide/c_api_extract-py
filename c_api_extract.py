@@ -1,7 +1,7 @@
 """
 Usage:
-  c_api_extract.py <input> [-p <pattern>...] [-c] [-- <clang_args>...]
-  c_api_extract.py -h
+  c_api_extract <input> [-p <pattern>...] [-c] [-- <clang_args>...]
+  c_api_extract -h
 
 Options:
   -c, --compact                        Write minified JSON.
@@ -126,6 +126,19 @@ class Visitor:
             )
             self.defs.append(function)
 
+type_components_re = re.compile(r'(\S+[^[*]*\**)(.*)')
+def typed_declaration(ty, identifier):
+    """
+    Utility to form a typed declaration from a C type and identifier.
+    This correctly handles array lengths and function pointer arguments.
+    """
+    m = type_components_re.match(ty)
+    return '{base_or_return_type}{maybe_space}{identifier}{maybe_array_or_arguments}'.format(
+        base_or_return_type=m.group(1),
+        maybe_space='' if m.group(2) else ' ',
+        identifier=identifier,
+        maybe_array_or_arguments=m.group(2) or '',
+    )
 
 def definitions_from_header(*args, **kwargs):
     visitor = Visitor()

@@ -94,3 +94,4 @@ TODO
 ----
 - Add support for constants defined using `#define` 
 - Add support for nested anonymous struct|unions
+- Add docstrings
