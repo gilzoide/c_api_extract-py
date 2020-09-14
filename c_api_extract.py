@@ -126,7 +126,7 @@ class Visitor:
             )
             self.defs.append(function)
 
-type_components_re = re.compile(r'(\S+[^[*]*\**)(.*)')
+type_components_re = re.compile(r'([^[*]*\**)(.*)')
 def typed_declaration(ty, identifier):
     """
     Utility to form a typed declaration from a C type and identifier.
@@ -139,6 +139,14 @@ def typed_declaration(ty, identifier):
         identifier=identifier,
         maybe_array_or_arguments=m.group(2) or '',
     )
+
+base_type_re = re.compile(r'(?:\b(?:const|volatile|restrict)\b\s*)*(([^[*(]+)(\(?).*)')
+def base_type(ty):
+    """
+    Get the base type from spelling, removing const/volatile/restrict specifiers and pointers.
+    """
+    m = base_type_re.match(ty)
+    return (m.group(1) if m.group(3) else m.group(2)).strip()
 
 def definitions_from_header(*args, **kwargs):
     visitor = Visitor()
