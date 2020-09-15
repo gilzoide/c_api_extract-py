@@ -126,7 +126,7 @@ class Visitor:
             )
             self.defs.append(function)
 
-type_components_re = re.compile(r'([^[*]*\**)(.*)')
+type_components_re = re.compile(r'([^(]*\(\**|[^[]*)(.*)')
 def typed_declaration(ty, identifier):
     """
     Utility to form a typed declaration from a C type and identifier.

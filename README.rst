@@ -37,8 +37,8 @@ Or using Python:
 `c_api_extract.py` works on a single header file for simplicity.
 If you need more than one header processed, create a new one and `#include` them.
 
-It is recommended to pass `-I<path to clang headers>` to *clang* to correctly include some
-standard headers like **stddef.h** and **stdbool.h**.
+It is recommended to pass `-I <path to clang headers>` to *clang* to correctly
+include some standard headers like **stddef.h** and **stdbool.h**.
 
 
 Output format
