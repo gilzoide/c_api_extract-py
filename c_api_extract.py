@@ -19,7 +19,7 @@ from docopt import docopt
 import clang.cindex as clang
 
 
-__version__ = '0.4.0'
+__version__ = '0.4.1'
 
 class Visitor:
     def __init__(self):
