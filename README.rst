@@ -34,10 +34,10 @@ Or using Python:
   # `definitions` follow the same format as output JSON
   definitions = c_api_extract.definitions_from_header('header_name.h', ['-I/usr/lib/clang/<version>/include', '-Dother_clang_args', ...])
 
-`c_api_extract.py` works on a single header file for simplicity.
-If you need more than one header processed, create a new one and `#include` them.
+**c_api_extract.py** works on a single header file for simplicity.
+If you need more than one header processed, create a new one and ``#include`` them.
 
-It is recommended to pass `-I <path to clang headers>` to *clang* to correctly
+It is recommended to pass ``-I <path to clang headers>`` to *clang* to correctly
 include some standard headers like **stddef.h** and **stdbool.h**.
 
 
@@ -105,6 +105,6 @@ Output is a list of definitions, each kind with it's format:
 TODO
 ----
 - Include *clang* standard headers by default based on host operating system
-- Add support for constants defined using `#define` 
+- Add support for constants defined using ``#define``
 - Add support for nested anonymous struct|unions
 - Add docstrings
