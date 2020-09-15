@@ -9,11 +9,20 @@ to a JSON file content.
 .. _clang: https://pypi.org/project/clang/
 
 
+Installing
+----------
+`c_api_extract` is available on PyPI_::
+
+  $ pip install c-api-extract
+
+.. _PyPI: https://pypi.org/project/c-api-extract/
+
+
 Usage
 -----
-Calling from console::
+Using the command line interface::
 
-    $ c_api_extract.py <input> [-p <pattern>...] [-c] [-- <clang_args>...]
+    $ c_api_extract <input> [-p <pattern>...] [-c] [-- <clang_args>...]
 
 
 Or using Python:
