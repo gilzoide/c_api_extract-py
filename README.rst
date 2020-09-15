@@ -11,7 +11,7 @@ to a JSON file content.
 
 Installing
 ----------
-`c_api_extract` is available on PyPI_::
+**c_api_extract** is available on PyPI_ and may be installed using ``pip``::
 
   $ pip install c-api-extract
 
