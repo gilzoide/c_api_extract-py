@@ -1,13 +1,15 @@
 """
 Usage:
-  c_api_extract <input> [-p <pattern>...] [-c] [-- <clang_args>...]
+  c_api_extract <input> [-p <pattern>...] [options] [-- <clang_args>...]
   c_api_extract -h
 
 Options:
-  -c, --compact                        Write minified JSON.
   -h, --help                           Show this help message.
   -p <pattern>, --pattern=<pattern>    Only process headers with names that match any of the given regex patterns.
                                        Matches are tested using `re.search`, so patterns are not anchored by default.
+  --compact                            Output minified JSON instead of using 2 space indentations.
+  --source                             Include declarations verbatim source code from header.
+  --size                               Include "size" property with types `sizeof` in bytes.
                                        This may be used to avoid processing standard headers and dependencies headers.
 """
 
@@ -21,20 +23,32 @@ import clang.cindex as clang
 
 __version__ = '0.4.1'
 
+
+
+
 class Visitor:
+    UNION_STRUCT_NAME_RE = re.compile(r'(union|struct)\s+(.+)')
+    ENUM_NAME_RE = re.compile(r'enum\s+(.+)')
+    MATCH_ALL_RE = re.compile('.*')
+
     def __init__(self):
         self.defs = []
         self.typedefs = {}
         self.index = clang.Index.create()
+        self.types = {}
 
-    match_all_re = re.compile('.*')
-    def parse_header(self, header_path, clang_args=[], allowed_patterns=[]):
-        allowed_patterns = [re.compile(p) for p in allowed_patterns] or [Visitor.match_all_re]
+    def parse_header(self, header_path, clang_args=[], allowed_patterns=[],
+                     include_source=False, include_size=False):
+        allowed_patterns = [re.compile(p) for p in allowed_patterns] or [Visitor.MATCH_ALL_RE]
         tu = self.index.parse(
             header_path,
             args=clang_args,
-            options=clang.TranslationUnit.PARSE_SKIP_FUNCTION_BODIES | clang.TranslationUnit.PARSE_INCOMPLETE | clang.TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD
+            options=clang.TranslationUnit.PARSE_SKIP_FUNCTION_BODIES |
+                    clang.TranslationUnit.PARSE_INCOMPLETE |
+                    clang.TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD
         )
+        self.include_source = include_source
+        self.include_size = include_size
         self.open_files = {}
         for cursor in tu.cursor.get_children():
             self.process(cursor, allowed_patterns)
@@ -47,6 +61,8 @@ class Visitor:
         return self.typedefs.get(cursor.underlying_typedef_type.get_declaration().hash)
 
     def source_for_cursor(self, cursor):
+        if not self.include_source:
+            return None
         source_range = cursor.extent
         start = source_range.start
         end = source_range.end
@@ -66,65 +82,139 @@ class Visitor:
             return
 
         if cursor.kind == clang.CursorKind.VAR_DECL:
-            self.defs.append(dict(
-                kind='var',
-                name=cursor.spelling,
-                type=cursor.type.spelling,
-                source=self.source_for_cursor(cursor),
-            ))
+            new_definition = {
+                'kind': 'var',
+                'name': cursor.spelling,
+                'type': self.process_type(cursor.type),
+            }
+            if self.include_source:
+                new_definition['source'] = self.source_for_cursor(cursor)
+            self.defs.append(new_definition)
         elif cursor.kind == clang.CursorKind.TYPEDEF_DECL:
-            definition = self.get_typedef(cursor)
-            if definition:
-                definition['typedef'] = cursor.spelling
-
-            self.defs.append(dict(
-                kind='typedef',
-                name=cursor.spelling,
-                type=cursor.underlying_typedef_type.spelling,
-                source=self.source_for_cursor(cursor),
-            ))
+            self.process_type(cursor.type)
         elif cursor.kind == clang.CursorKind.ENUM_DECL:
-            enum = dict(
-                kind='enum',
-                name=cursor.spelling,
-                type=cursor.enum_type.spelling,
-                values=[(c.spelling, c.enum_value)
-                        for c in cursor.get_children()],
-                source=self.source_for_cursor(cursor),
-            )
-            self.defs.append(enum)
-            self.add_typedef(cursor, enum)
+            self.process_type(cursor.type)
         elif cursor.kind == clang.CursorKind.STRUCT_DECL:
-            struct = dict(
-                kind='struct',
-                name=cursor.spelling,
-                fields=[(f.type.spelling, f.spelling)
-                        for f in cursor.type.get_fields()],
-                source=self.source_for_cursor(cursor),
-            )
-            self.defs.append(struct)
-            self.add_typedef(cursor, struct)
+            self.process_type(cursor.type)
         elif cursor.kind == clang.CursorKind.UNION_DECL:
-            union = dict(
-                kind='union',
-                name=cursor.spelling,
-                fields=[(f.type.spelling, f.spelling)
-                        for f in cursor.type.get_fields()],
-                source=self.source_for_cursor(cursor),
-            )
-            self.defs.append(union)
-            self.add_typedef(cursor, union)
+            self.process_type(cursor.type)
         elif cursor.kind == clang.CursorKind.FUNCTION_DECL:
-            function = dict(
-                kind='function',
-                name=cursor.spelling,
-                return_type=cursor.type.get_result().spelling,
-                arguments=[(a.type.spelling, a.spelling)
-                           for a in cursor.get_arguments()],
-                variadic=cursor.type.kind == clang.TypeKind.FUNCTIONPROTO and cursor.type.is_function_variadic(),
-                source=self.source_for_cursor(cursor),
-            )
-            self.defs.append(function)
+            new_definition = {
+                'kind': 'function',
+                'name': cursor.spelling,
+                'return_type': self.process_type(cursor.type.get_result()),
+                'arguments': [(self.process_type(a.type), a.spelling)
+                              for a in cursor.get_arguments()],
+                'variadic': cursor.type.kind == clang.TypeKind.FUNCTIONPROTO and cursor.type.is_function_variadic(),
+            }
+            if self.include_source:
+                new_definition['source'] = self.source_for_cursor(cursor)
+            self.defs.append(new_definition)
+
+    def process_type(self, t):
+        if t.kind == clang.TypeKind.ELABORATED:
+            # just process inner type
+            t = t.get_named_type()
+        declaration = t.get_declaration()
+        # print('processing ', t.kind, t.spelling)
+        base = t
+        spelling = t.spelling
+        result = {}
+        if t.kind == clang.TypeKind.RECORD:
+            m = self.UNION_STRUCT_NAME_RE.match(t.spelling)
+            if m:
+                union_or_struct = m.group(1)
+                name = re.sub('\\W', '_', m.group(2))
+                spelling = '{} {}'.format(union_or_struct, name)
+            else:
+                assert declaration.kind in (clang.CursorKind.STRUCT_DECL, clang.CursorKind.UNION_DECL)
+                union_or_struct = ('struct'
+                                   if declaration.kind == clang.CursorKind.STRUCT_DECL
+                                   else 'union')
+                name = t.spelling
+            if declaration.hash not in self.types:
+                fields = []
+                for field in t.get_fields():
+                    fields.append([
+                        self.process_type(field.type),
+                        field.spelling,
+                    ])
+                new_definition = {
+                    'kind': union_or_struct,
+                    'fields': fields,
+                    'name': name,
+                    'spelling': spelling,
+                }
+                if self.include_source:
+                    new_definition['source'] = self.source_for_cursor(declaration)
+                if self.include_size:
+                    new_definition['size'] = t.get_size()
+                self.defs.append(new_definition)
+                self.types[declaration.hash] = spelling
+        elif t.kind == clang.TypeKind.ENUM:
+            if declaration.hash not in self.types:
+                m = self.ENUM_NAME_RE.match(t.spelling)
+                name = m.group(1) if m else t.spelling
+                new_definition = {
+                    'kind': 'enum',
+                    'name': name,
+                    'spelling': spelling,
+                    'type': self.process_type(declaration.enum_type),
+                    'values': [(c.spelling, c.enum_value) for c in declaration.get_children()],
+                }
+                if self.include_source:
+                    new_definition['source'] = self.source_for_cursor(declaration)
+                self.defs.append(new_definition)
+                self.types[declaration.hash] = spelling
+        elif t.kind == clang.TypeKind.TYPEDEF:
+            if declaration.hash not in self.types:
+                new_definition = {
+                    'kind': 'typedef',
+                    'name': t.get_typedef_name(),
+                    'typedef': self.process_type(declaration.underlying_typedef_type),
+                }
+                self.defs.append(new_definition)
+                self.types[declaration.hash] = spelling
+        elif t.kind == clang.TypeKind.POINTER:
+            result['pointer'], base = self.process_pointer_or_array(t)
+            spelling = base.spelling
+        elif t.kind in (clang.TypeKind.CONSTANTARRAY, clang.TypeKind.INCOMPLETEARRAY):
+            result['array'], base = self.process_pointer_or_array(t)
+            spelling = base.spelling
+        else:
+            # print('WHAT? ', t.kind, spelling)
+            pass
+        if base.is_const_qualified():
+            result['const'] = True
+        if base.is_volatile_qualified():
+            result['volatile'] = True
+        if base.is_restrict_qualified():
+            result['restrict'] = True
+        result['base'] = base_type(spelling)
+        if self.include_size:
+            result['size'] = t.get_size()
+
+        return result
+
+
+    @classmethod
+    def process_pointer_or_array(cls, t):
+        result = []
+        while t:
+            if t.kind == clang.TypeKind.POINTER:
+                result.append('*')
+                t = t.get_pointee()
+            elif t.kind == clang.TypeKind.CONSTANTARRAY:
+                result.append(t.get_array_size())
+                t = t.element_type
+            elif t.kind == clang.TypeKind.INCOMPLETEARRAY:
+                result.append('*')
+                t = t.element_type
+            else:
+                break
+        return result, t
+
+
 
 type_components_re = re.compile(r'([^(]*\(\**|[^[]*)(.*)')
 def typed_declaration(ty, identifier):
@@ -140,12 +230,12 @@ def typed_declaration(ty, identifier):
         maybe_array_or_arguments=m.group(2) or '',
     )
 
-base_type_re = re.compile(r'(?:\b(?:const|volatile|restrict)\b\s*)*(([^[*(]+)(\(?).*)')
+BASE_TYPE_RE = re.compile(r'(?:\b(?:const|volatile|restrict)\b\s*)*(([^[*(]+)(\(?).*)')
 def base_type(ty):
     """
     Get the base type from spelling, removing const/volatile/restrict specifiers and pointers.
     """
-    m = base_type_re.match(ty)
+    m = BASE_TYPE_RE.match(ty)
     return (m.group(1) if m.group(3) else m.group(2)).strip()
 
 def definitions_from_header(*args, **kwargs):
@@ -156,8 +246,9 @@ def definitions_from_header(*args, **kwargs):
 
 def main():
     opts = docopt(__doc__)
-    definitions = definitions_from_header(
-        opts['<input>'], opts['<clang_args>'], opts['--pattern'])
+    definitions = definitions_from_header(opts['<input>'], opts['<clang_args>'],
+                                          opts['--pattern'], opts['--source'],
+                                          opts['--size'])
     signal(SIGPIPE, SIG_DFL)
     print(json.dumps(definitions, indent=None if opts.get('--compact') else 2))
 
