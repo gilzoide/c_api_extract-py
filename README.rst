@@ -22,7 +22,11 @@ Usage
 -----
 Using the command line interface::
 
-    $ c_api_extract <input> [-p <pattern>...] [-c] [-- <clang_args>...]
+    $ c_api_extract <input> [-i <include_pattern>...] [options] [-- <clang_args>...]
+
+Check out the available options with::
+
+    $ c_api_extract -h
 
 
 Or using Python:
@@ -32,79 +36,96 @@ Or using Python:
   import c_api_extract
 
   # `definitions` follow the same format as output JSON
-  definitions = c_api_extract.definitions_from_header('header_name.h', ['-I/usr/lib/clang/<version>/include', '-Dother_clang_args', ...])
+  definitions = c_api_extract.definitions_from_header('header_name.h', ['-Dsome_clang_args', ...])
 
 **c_api_extract.py** works on a single header file for simplicity.
 If you need more than one header processed, create a new one and ``#include`` them.
 
-It is recommended to pass ``-I <path to clang headers>`` to *clang* to correctly
-include some standard headers like **stddef.h** and **stdbool.h**.
-
 
 Output format
 -------------
-Output is a list of definitions, each kind with it's format:
+Output is a list of definitions, each kind with its format:
 
 .. code:: python
 
   # variable definitions
   {
     'kind': 'var',
-    'name': '<name>',   # variable name
-    'type': '<type>'    # type name as written in source code
-    'source': '<code>'  # source C code from read header file
+    'name': '<name>',         # variable name
+    'type': {<type object>},  # type object
+    # only present if you pass `--source` to c_api_extract
+    'source': '<verbatim definition source code>',
   }
 
   # enum definitions
   {
     'kind': 'enum',
-    'name': '<name>',        # enum name, empty for anonymous enums
-    'typedef': '<typedef>',  # typedef name, may be empty
-    'type': '<C type>',      # enum underlying C type name
-    'values': [              # list of declared names and values
+    'name': '<name>',         # enum name, generated for anonymous enums
+    'type': {<type object>},  # enum underlying type, normally `{"base": "unsigned int"}`
+    'values': [               # list of declared names and values
       ['<name>', <integer value>]
       # ...
     ],
-    'source': '<code>'       # source C code from read header file
+    # only present if you pass `--source` to c_api_extract
+    'source': '<verbatim definition source code>',
   }
 
   # struct|union definitions
   {
     'kind': 'struct' | 'union',
-    'name': '<name>',        # struct|union name, empty for anonymous struct|unions
-    'typedef': '<typedef>',  # typedef name, may be empty
-    'fields': [              # list of declared fields, empty for opaque struct|unions
-      ['<type>', '<name>']
-      # ...
+    'name': '<name>',          # struct|union name, generated for anonymous struct|unions
+    'spelling': '<spelling>',  # Spelling that be used directly in C to refer to type
+    'fields': [                # list of declared fields, empty for opaque struct|unions
+      [{<type object>}, '<name>'],  # name may be "" for nested anonymous structs|unions
+      ...
     ],
-    'source': '<code>'       # source C code from read header file
+    # only present if you pass `--source` to c_api_extract
+    'source': '<verbatim definition source code>',
   }
 
   # typedef definitions
   {
     'kind': 'typedef',
-    'name': '<name>',   # name of the typedef
-    'type': '<type>',   # name of the underlying type
-    'source': '<code>'  # source C code from read header file
+    'name': '<name>',         # name of the typedef
+    'type': {<type object>},  # underlying type
+    # only present if you pass `--source` to c_api_extract
+    'source': '<verbatim definition source code>',
   }
 
   # function definitions
   {
     'kind': 'function',
-    'name': '<name>',          # name of the function
-    'return_type': '<type>',   # return type name
-    'arguments': [             # list of arguments
-      ['<type>', '<name>']
-      # ...
+    'name': '<name>',                # name of the function
+    'return_type': {<type object>},  # return type
+    'arguments': [                   # list of arguments
+      [{<type object>}, '<name>'],
+      ...
     ],
     'variadic': true | false,  # true if function is variadic
-    'source': '<code>'         # source C code from read header file
+    # only present if you pass `--source` to c_api_extract
+    'source': '<verbatim definition source code>',
+  }
+
+  #########################################################
+  # All type objects use the following structure:
+  {
+    'base': '<unqualified base type spelling>',
+    # only present if type is a pointer type
+    'pointer': ['*', ...]
+    # only present if type is an array type
+    'array': [<integer size>, '<"*" if incomplete array or pointer type>', ...]
+    # only present if base type is const qualified
+    'const': true,
+    # only present if base type is volatile qualified
+    'volatile': true,
+    # only present if base type is restrict qualified
+    'restrict': true,
+    # only present if you pass `--size` to c_api_extract
+    'size': <integer sizeof, may be negative for "void" and incomplete arrays>,
   }
 
 
 TODO
 ----
-- Include *clang* standard headers by default based on host operating system
 - Add support for constants defined using ``#define``
-- Add support for nested anonymous struct|unions
 - Add docstrings

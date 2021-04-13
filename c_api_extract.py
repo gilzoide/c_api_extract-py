@@ -1,19 +1,26 @@
 """
 Usage:
-  c_api_extract <input> [-p <pattern>...] [options] [-- <clang_args>...]
+  c_api_extract <input> [-i <include_pattern>...] [options] [-- <clang_args>...]
   c_api_extract -h
 
-Options:
-  -h, --help                           Show this help message.
-  -p <pattern>, --pattern=<pattern>    Only process headers with names that match any of the given regex patterns.
-                                       Matches are tested using `re.search`, so patterns are not anchored by default.
-  --compact                            Output minified JSON instead of using 2 space indentations.
-  --source                             Include declarations verbatim source code from header.
-  --size                               Include "size" property with types `sizeof` in bytes.
-                                       This may be used to avoid processing standard headers and dependencies headers.
+General options:
+  -h, --help              Show this help message.
+  --version               Show the version and exit.
+
+Filtering options:
+  -i, --include=<include_pattern>
+                          Only process headers with names that match any of the given regex patterns.
+                          Matches are tested using `re.search`, so patterns are not anchored by default.
+                          This may be used to avoid processing standard headers and dependencies headers.
+
+Output modifier options:
+  --compact               Output minified JSON instead of using 2 space indentations.
+  --source                Include declarations' source code verbatim from processed files.
+  --size                  Include "size" property with types `sizeof` in bytes.
 """
 
 import json
+from pathlib import Path, PurePath
 import re
 from signal import signal, SIGPIPE, SIG_DFL
 import subprocess
@@ -40,10 +47,11 @@ class Visitor:
         self.index = clang.Index.create()
         self.types = {}
 
-    def parse_header(self, header_path, clang_args=[], allowed_patterns=[],
+    def parse_header(self, header_path, clang_args=[], include_patterns=[],
                      include_source=False, include_size=False):
-        allowed_patterns = [re.compile(p) for p in allowed_patterns] or [Visitor.MATCH_ALL_RE]
-        clang_cmd = ['clang', '-emit-ast', header_path, '-o', '-'] + clang_args
+        include_patterns = [re.compile(p) for p in include_patterns] or [Visitor.MATCH_ALL_RE]
+        clang_cmd = ['clang', '-emit-ast', header_path, '-o', '-']
+        clang_cmd.extend(clang_args)
         clang_result = subprocess.run(clang_cmd, stdout=subprocess.PIPE)
         if clang_result.returncode != 0:
             raise CompilationError
@@ -55,7 +63,7 @@ class Visitor:
         self.include_size = include_size
         self.open_files = {}
         for cursor in tu.cursor.get_children():
-            self.process(cursor, allowed_patterns)
+            self.process(cursor, include_patterns)
         del self.open_files
 
     def add_typedef(self, cursor, ty):
@@ -77,10 +85,14 @@ class Visitor:
         f.seek(start.offset)
         return f.read(end.offset - start.offset)
 
-    def process(self, cursor, allowed_patterns):
+    def process(self, cursor, include_patterns):
         try:
-            filename = cursor.location.file.name
-            if not any(pattern.search(filename) for pattern in allowed_patterns):
+            cwd = Path.cwd()
+            filepath = PurePath(cursor.location.file.name)
+            if filepath.is_relative_to(cwd):
+                filepath = filepath.relative_to(cwd)
+            filepath = str(filepath)
+            if not any(pattern.search(filepath) for pattern in include_patterns):
                 return
         except AttributeError:
             return
@@ -158,7 +170,11 @@ class Visitor:
         elif t.kind == clang.TypeKind.ENUM:
             if declaration.hash not in self.types:
                 m = self.ENUM_NAME_RE.match(t.spelling)
-                name = m.group(1) if m else t.spelling
+                if m:
+                    name = re.sub('\\W', '_', m.group(1))
+                    spelling = "enum {}".format(name)
+                else:
+                    name = t.spelling
                 new_definition = {
                     'kind': 'enum',
                     'name': name,
@@ -175,7 +191,7 @@ class Visitor:
                 new_definition = {
                     'kind': 'typedef',
                     'name': t.get_typedef_name(),
-                    'typedef': self.process_type(declaration.underlying_typedef_type),
+                    'type': self.process_type(declaration.underlying_typedef_type),
                 }
                 self.defs.append(new_definition)
                 self.types[declaration.hash] = spelling
@@ -249,10 +265,10 @@ def definitions_from_header(*args, **kwargs):
 
 
 def main():
-    opts = docopt(__doc__)
+    opts = docopt(__doc__, version=__version__)
     try:
         definitions = definitions_from_header(opts['<input>'], opts['<clang_args>'],
-                                              opts['--pattern'], opts['--source'],
+                                              opts['--include'], opts['--source'],
                                               opts['--size'])
         signal(SIGPIPE, SIG_DFL)
         print(json.dumps(definitions, indent=None if opts.get('--compact') else 2))
