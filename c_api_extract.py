@@ -16,6 +16,8 @@ Options:
 import json
 import re
 from signal import signal, SIGPIPE, SIG_DFL
+import subprocess
+import tempfile
 
 from docopt import docopt
 import clang.cindex as clang
@@ -23,7 +25,8 @@ import clang.cindex as clang
 
 __version__ = '0.4.1'
 
-
+class CompilationError(Exception):
+    pass
 
 
 class Visitor:
@@ -40,13 +43,14 @@ class Visitor:
     def parse_header(self, header_path, clang_args=[], allowed_patterns=[],
                      include_source=False, include_size=False):
         allowed_patterns = [re.compile(p) for p in allowed_patterns] or [Visitor.MATCH_ALL_RE]
-        tu = self.index.parse(
-            header_path,
-            args=clang_args,
-            options=clang.TranslationUnit.PARSE_SKIP_FUNCTION_BODIES |
-                    clang.TranslationUnit.PARSE_INCOMPLETE |
-                    clang.TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD
-        )
+        clang_cmd = ['clang', '-emit-ast', header_path, '-o', '-'] + clang_args
+        clang_result = subprocess.run(clang_cmd, stdout=subprocess.PIPE)
+        if clang_result.returncode != 0:
+            raise CompilationError
+        with tempfile.NamedTemporaryFile(suffix=".pch") as ast_file:
+            ast_file.write(clang_result.stdout)
+            tu = self.index.read(ast_file.name)
+
         self.include_source = include_source
         self.include_size = include_size
         self.open_files = {}
@@ -246,11 +250,15 @@ def definitions_from_header(*args, **kwargs):
 
 def main():
     opts = docopt(__doc__)
-    definitions = definitions_from_header(opts['<input>'], opts['<clang_args>'],
-                                          opts['--pattern'], opts['--source'],
-                                          opts['--size'])
-    signal(SIGPIPE, SIG_DFL)
-    print(json.dumps(definitions, indent=None if opts.get('--compact') else 2))
+    try:
+        definitions = definitions_from_header(opts['<input>'], opts['<clang_args>'],
+                                              opts['--pattern'], opts['--source'],
+                                              opts['--size'])
+        signal(SIGPIPE, SIG_DFL)
+        print(json.dumps(definitions, indent=None if opts.get('--compact') else 2))
+    except CompilationError as e:
+        # clang have already dumped its errors to stderr
+        pass
 
 
 if __name__ == '__main__':
