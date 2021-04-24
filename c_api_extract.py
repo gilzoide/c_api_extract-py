@@ -117,14 +117,16 @@ class Visitor:
         elif cursor.kind == clang.CursorKind.UNION_DECL:
             self.process_type(cursor.type)
         elif cursor.kind == clang.CursorKind.FUNCTION_DECL:
+            func_type = self.process_type(cursor.type)
             new_definition = {
                 'kind': 'function',
                 'name': cursor.spelling,
-                'return_type': self.process_type(cursor.type.get_result()),
+                'return_type': func_type['return_type'],
                 'arguments': [(self.process_type(a.type), a.spelling)
                               for a in cursor.get_arguments()],
-                'variadic': cursor.type.kind == clang.TypeKind.FUNCTIONPROTO and cursor.type.is_function_variadic(),
             }
+            if func_type.get('variadic'):
+                new_definition['variadic'] = func_type.get('variadic')
             if self.include_source:
                 new_definition['source'] = self.source_for_cursor(cursor)
             self.defs.append(new_definition)
@@ -203,9 +205,17 @@ class Visitor:
         elif t.kind == clang.TypeKind.POINTER:
             result['pointer'], base = self.process_pointer_or_array(t)
             spelling = base.spelling
+            if base.kind in (clang.TypeKind.FUNCTIONPROTO, clang.TypeKind.FUNCTIONNOPROTO):
+                result['function'] = self.process_type(base)
         elif t.kind in (clang.TypeKind.CONSTANTARRAY, clang.TypeKind.INCOMPLETEARRAY):
             result['array'], base = self.process_pointer_or_array(t)
             spelling = base.spelling
+        elif t.kind in (clang.TypeKind.FUNCTIONPROTO, clang.TypeKind.FUNCTIONNOPROTO):
+            result['return_type'] = self.process_type(t.get_result())
+            result['arguments'] = [self.process_type(a)
+                                   for a in t.argument_types()],
+            if t.kind == clang.TypeKind.FUNCTIONPROTO and t.is_function_variadic():
+                result['variadic'] = True
         else:
             # print('WHAT? ', t.kind, spelling)
             pass
