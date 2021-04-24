@@ -101,7 +101,7 @@ Output is a list of definitions, each kind with its format:
       [{<type object>}, '<name>'],
       ...
     ],
-    'variadic': true | false,  # true if function is variadic
+    'variadic': true,  # only present if function is variadic
     # only present if you pass `--source` to c_api_extract
     'source': '<verbatim definition source code>',
   }
@@ -111,9 +111,18 @@ Output is a list of definitions, each kind with its format:
   {
     'base': '<unqualified base type spelling>',
     # only present if type is a pointer type
-    'pointer': ['*', ...]
+    'pointer': ['*', ...],
     # only present if type is an array type
-    'array': [<integer size>, '<"*" if incomplete array or pointer type>', ...]
+    'array': [<integer size>, '<"*" if incomplete array or pointer type>', ...],
+    # only present if type is a function pointer type
+    'function': {<type object>},
+    # only present if type is a function type
+    'return_type': {<type object>},
+    # only present if type is a function type
+    # notice that function types don't carry argument names
+    'arguments': [{<type object>}, ...],
+    # only present if type is a function type and function is variadic
+    'variadic': true,
     # only present if base type is const qualified
     'const': true,
     # only present if base type is volatile qualified
