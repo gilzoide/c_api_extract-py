@@ -31,7 +31,7 @@ from docopt import docopt
 import clang.cindex as clang
 
 
-__version__ = '0.4.1'
+__version__ = '0.5.0'
 
 class CompilationError(Exception):
     pass
