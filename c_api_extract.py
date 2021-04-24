@@ -15,9 +15,12 @@ Filtering options:
 
 Output modifier options:
   --compact               Output minified JSON instead of using 2 space indentations.
+  --type-objects          Output type objects instead of simply the type spelling string.
   --offset                Include "offset" property with record fields `offsetof` in bytes.
+                          Only available with `--type-objects`
   --source                Include declarations' source code verbatim from processed files.
   --size                  Include "size" property with types `sizeof` in bytes.
+                          Only available with `--type-objects`
 """
 
 import json
@@ -48,7 +51,7 @@ class Visitor:
         self.index = clang.Index.create()
         self.types = {}
 
-    def parse_header(self, header_path, clang_args=[], include_patterns=[],
+    def parse_header(self, header_path, clang_args=[], include_patterns=[], type_objects=False,
                      include_source=False, include_size=False, include_offset=False):
         include_patterns = [re.compile(p) for p in include_patterns] or [Visitor.MATCH_ALL_RE]
         clang_cmd = ['clang', '-emit-ast', header_path, '-o', '-']
@@ -60,6 +63,7 @@ class Visitor:
             ast_file.write(clang_result.stdout)
             tu = self.index.read(ast_file.name)
 
+        self.type_objects = type_objects
         self.include_source = include_source
         self.include_size = include_size
         self.include_offset = include_offset
@@ -117,16 +121,15 @@ class Visitor:
         elif cursor.kind == clang.CursorKind.UNION_DECL:
             self.process_type(cursor.type)
         elif cursor.kind == clang.CursorKind.FUNCTION_DECL:
-            func_type = self.process_type(cursor.type)
             new_definition = {
                 'kind': 'function',
                 'name': cursor.spelling,
-                'return_type': func_type['return_type'],
+                'return_type': self.process_type(cursor.type.get_result()),
                 'arguments': [(self.process_type(a.type), a.spelling)
                               for a in cursor.get_arguments()],
             }
-            if func_type.get('variadic'):
-                new_definition['variadic'] = func_type.get('variadic')
+            if cursor.type.kind == clang.TypeKind.FUNCTIONPROTO and cursor.type.is_function_variadic():
+                new_definition['variadic'] = True
             if self.include_source:
                 new_definition['source'] = self.source_for_cursor(cursor)
             self.defs.append(new_definition)
@@ -204,12 +207,10 @@ class Visitor:
                 self.types[declaration.hash] = spelling
         elif t.kind == clang.TypeKind.POINTER:
             result['pointer'], base = self.process_pointer_or_array(t)
-            spelling = base.spelling
             if base.kind in (clang.TypeKind.FUNCTIONPROTO, clang.TypeKind.FUNCTIONNOPROTO):
                 result['function'] = self.process_type(base)
         elif t.kind in (clang.TypeKind.CONSTANTARRAY, clang.TypeKind.INCOMPLETEARRAY):
             result['array'], base = self.process_pointer_or_array(t)
-            spelling = base.spelling
         elif t.kind in (clang.TypeKind.FUNCTIONPROTO, clang.TypeKind.FUNCTIONNOPROTO):
             result['return_type'] = self.process_type(t.get_result())
             result['arguments'] = [self.process_type(a)
@@ -219,13 +220,16 @@ class Visitor:
         else:
             # print('WHAT? ', t.kind, spelling)
             pass
+        if not self.type_objects:
+            return spelling
         if base.is_const_qualified():
             result['const'] = True
         if base.is_volatile_qualified():
             result['volatile'] = True
         if base.is_restrict_qualified():
             result['restrict'] = True
-        result['base'] = base_type(spelling)
+        result['spelling'] = spelling
+        result['base'] = base_type(base.spelling if base is not t else spelling)
         if self.include_size:
             result['size'] = t.get_size()
 
@@ -248,7 +252,6 @@ class Visitor:
             else:
                 break
         return result, t
-
 
 
 TYPE_COMPONENTS_RE = re.compile(r'([^(]*\(\**|[^[]*)(.*)')
@@ -284,9 +287,13 @@ def definitions_from_header(*args, **kwargs):
 def main():
     opts = docopt(__doc__, version=__version__)
     try:
-        definitions = definitions_from_header(opts['<input>'], opts['<clang_args>'],
-                                              opts['--include'], opts['--source'],
-                                              opts['--size'], opts['--offset'])
+        definitions = definitions_from_header(opts['<input>'],
+                                              clang_args=opts['<clang_args>'],
+                                              include_patterns=opts['--include'],
+                                              type_objects=opts['--type-objects'],
+                                              include_source=opts['--source'],
+                                              include_size=opts['--size'],
+                                              include_offset=opts['--offset'])
         signal(SIGPIPE, SIG_DFL)
         compact = opts.get('--compact')
         print(json.dumps(definitions, indent=None if compact else 2, separators=(',', ':') if compact else None), end='')
