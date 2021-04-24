@@ -203,6 +203,8 @@ class Visitor:
                     'name': t.get_typedef_name(),
                     'type': self.process_type(declaration.underlying_typedef_type),
                 }
+                if self.include_source:
+                    new_definition['source'] = self.source_for_cursor(declaration)
                 self.defs.append(new_definition)
                 self.types[declaration.hash] = spelling
         elif t.kind == clang.TypeKind.POINTER:
