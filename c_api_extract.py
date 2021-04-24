@@ -251,19 +251,20 @@ class Visitor:
 
 
 
-type_components_re = re.compile(r'([^(]*\(\**|[^[]*)(.*)')
+TYPE_COMPONENTS_RE = re.compile(r'([^(]*\(\**|[^[]*)(.*)')
 def typed_declaration(ty, identifier):
     """
     Utility to form a typed declaration from a C type and identifier.
     This correctly handles array lengths and function pointer arguments.
     """
-    m = type_components_re.match(ty)
+    m = TYPE_COMPONENTS_RE.match(ty)
     return '{base_or_return_type}{maybe_space}{identifier}{maybe_array_or_arguments}'.format(
         base_or_return_type=m.group(1),
         maybe_space='' if m.group(2) else ' ',
         identifier=identifier,
         maybe_array_or_arguments=m.group(2) or '',
     )
+
 
 BASE_TYPE_RE = re.compile(r'(?:\b(?:const|volatile|restrict)\b\s*)*(([^[*(]+)(\(?).*)')
 def base_type(ty):
@@ -272,6 +273,7 @@ def base_type(ty):
     """
     m = BASE_TYPE_RE.match(ty)
     return (m.group(1) if m.group(3) else m.group(2)).strip()
+
 
 def definitions_from_header(*args, **kwargs):
     visitor = Visitor()
@@ -286,7 +288,8 @@ def main():
                                               opts['--include'], opts['--source'],
                                               opts['--size'], opts['--offset'])
         signal(SIGPIPE, SIG_DFL)
-        print(json.dumps(definitions, indent=None if opts.get('--compact') else 2))
+        compact = opts.get('--compact')
+        print(json.dumps(definitions, indent=None if compact else 2, separators=(',', ':') if compact else None), end='')
     except CompilationError as e:
         # clang have already dumped its errors to stderr
         pass
