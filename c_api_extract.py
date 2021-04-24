@@ -15,6 +15,7 @@ Filtering options:
 
 Output modifier options:
   --compact               Output minified JSON instead of using 2 space indentations.
+  --offset                Include "offset" property with record fields `offsetof` in bytes.
   --source                Include declarations' source code verbatim from processed files.
   --size                  Include "size" property with types `sizeof` in bytes.
 """
@@ -48,19 +49,20 @@ class Visitor:
         self.types = {}
 
     def parse_header(self, header_path, clang_args=[], include_patterns=[],
-                     include_source=False, include_size=False):
+                     include_source=False, include_size=False, include_offset=False):
         include_patterns = [re.compile(p) for p in include_patterns] or [Visitor.MATCH_ALL_RE]
         clang_cmd = ['clang', '-emit-ast', header_path, '-o', '-']
         clang_cmd.extend(clang_args)
         clang_result = subprocess.run(clang_cmd, stdout=subprocess.PIPE)
         if clang_result.returncode != 0:
             raise CompilationError
-        with tempfile.NamedTemporaryFile(suffix=".pch") as ast_file:
+        with tempfile.NamedTemporaryFile() as ast_file:
             ast_file.write(clang_result.stdout)
             tu = self.index.read(ast_file.name)
 
         self.include_source = include_source
         self.include_size = include_size
+        self.include_offset = include_offset
         self.open_files = {}
         for cursor in tu.cursor.get_children():
             self.process(cursor, include_patterns)
@@ -151,10 +153,13 @@ class Visitor:
             if declaration.hash not in self.types:
                 fields = []
                 for field in t.get_fields():
-                    fields.append([
+                    new_field = [
                         self.process_type(field.type),
                         field.spelling,
-                    ])
+                    ]
+                    if self.include_offset:
+                        new_field.append(field.get_field_offsetof())
+                    fields.append(new_field)
                 new_definition = {
                     'kind': union_or_struct,
                     'fields': fields,
@@ -269,7 +274,7 @@ def main():
     try:
         definitions = definitions_from_header(opts['<input>'], opts['<clang_args>'],
                                               opts['--include'], opts['--source'],
-                                              opts['--size'])
+                                              opts['--size'], opts['--offset'])
         signal(SIGPIPE, SIG_DFL)
         print(json.dumps(definitions, indent=None if opts.get('--compact') else 2))
     except CompilationError as e:
