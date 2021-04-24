@@ -52,7 +52,7 @@ Output is a list of definitions, each kind with its format:
   {
     'kind': 'var',
     'name': '<name>',         # variable name
-    'type': {<type object>},  # type object
+    'type': <type spelling or object>,  # variable type
     # only present if you pass `--source` to c_api_extract
     'source': '<verbatim definition source code>',
   }
@@ -61,7 +61,7 @@ Output is a list of definitions, each kind with its format:
   {
     'kind': 'enum',
     'name': '<name>',         # enum name, generated for anonymous enums
-    'type': {<type object>},  # enum underlying type, normally `{"base": "unsigned int"}`
+    'type': <type spelling or object>,  # enum underlying type, usually "unsigned int"
     'values': [               # list of declared names and values
       ['<name>', <integer value>]
       # ...
@@ -76,7 +76,7 @@ Output is a list of definitions, each kind with its format:
     'name': '<name>',          # struct|union name, generated for anonymous struct|unions
     'spelling': '<spelling>',  # Spelling that be used directly in C to refer to type
     'fields': [                # list of declared fields, empty for opaque struct|unions
-      [{<type object>}, '<name>'],  # name may be "" for nested anonymous structs|unions
+      [<type spelling or object>, '<name>'],  # name may be "" for nested anonymous structs|unions
       ...
     ],
     # only present if you pass `--source` to c_api_extract
@@ -87,7 +87,7 @@ Output is a list of definitions, each kind with its format:
   {
     'kind': 'typedef',
     'name': '<name>',         # name of the typedef
-    'type': {<type object>},  # underlying type
+    'type': <type spelling or object>,  # underlying type
     # only present if you pass `--source` to c_api_extract
     'source': '<verbatim definition source code>',
   }
@@ -96,9 +96,9 @@ Output is a list of definitions, each kind with its format:
   {
     'kind': 'function',
     'name': '<name>',                # name of the function
-    'return_type': {<type object>},  # return type
+    'return_type': <type spelling or object>,  # return type
     'arguments': [                   # list of arguments
-      [{<type object>}, '<name>'],
+      [<type spelling or object>, '<name>'],
       ...
     ],
     'variadic': true,  # only present if function is variadic
@@ -107,7 +107,9 @@ Output is a list of definitions, each kind with its format:
   }
 
   #########################################################
-  # All type objects use the following structure:
+  # By default, types are literal strings with the type spelling as provided by clang.
+  # If you pass `--type-objects`, a JSON/Dict object is used instead with more detailed
+  # information. Its format is described below:
   {
     'base': '<unqualified base type spelling>',
     # only present if type is a pointer type
