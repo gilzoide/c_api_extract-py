@@ -44,6 +44,16 @@ class Visitor:
     UNION_STRUCT_NAME_RE = re.compile(r'(union|struct)\s+(.+)')
     ENUM_NAME_RE = re.compile(r'enum\s+(.+)')
     MATCH_ALL_RE = re.compile('.*')
+    BUILTIN_C_STRUCTS = {
+        "FILE", "fpos_t",  # stdio.h
+        "va_list",  # stdarg.h
+        "fenv_t", "fexcept_t", "femode_t",  # fenv.h
+        "jmp_buf",  # setjmp.h
+        "struct lconv",  # locale.h
+        "struct atomic_flag",  # stdatomic.h
+        "thrd_t", "mtx_t", "cnd_t",  # threads.h
+        "struct tm", "time_t", "struct timespec",  # time.h
+    }
 
     def __init__(self):
         self.defs = []
@@ -143,8 +153,8 @@ class Visitor:
         base = t
         spelling = t.spelling
         result = {}
-        if t.kind == clang.TypeKind.RECORD:
-            m = self.UNION_STRUCT_NAME_RE.match(t.spelling)
+        if t.kind == clang.TypeKind.RECORD and spelling not in self.BUILTIN_C_STRUCTS:
+            m = self.UNION_STRUCT_NAME_RE.match(spelling)
             if m:
                 union_or_struct = m.group(1)
                 name = re.sub('\\W', '_', m.group(2))
@@ -156,6 +166,7 @@ class Visitor:
                                    else 'union')
                 name = t.spelling
             if declaration.hash not in self.types:
+                self.types[declaration.hash] = spelling
                 fields = []
                 for field in t.get_fields():
                     new_field = [
@@ -176,9 +187,9 @@ class Visitor:
                 if self.include_size:
                     new_definition['size'] = t.get_size()
                 self.defs.append(new_definition)
-                self.types[declaration.hash] = spelling
         elif t.kind == clang.TypeKind.ENUM:
             if declaration.hash not in self.types:
+                self.types[declaration.hash] = spelling
                 m = self.ENUM_NAME_RE.match(t.spelling)
                 if m:
                     name = re.sub('\\W', '_', m.group(1))
@@ -195,9 +206,9 @@ class Visitor:
                 if self.include_source:
                     new_definition['source'] = self.source_for_cursor(declaration)
                 self.defs.append(new_definition)
-                self.types[declaration.hash] = spelling
-        elif t.kind == clang.TypeKind.TYPEDEF:
+        elif t.kind == clang.TypeKind.TYPEDEF and spelling not in self.BUILTIN_C_STRUCTS:
             if declaration.hash not in self.types:
+                self.types[declaration.hash] = spelling
                 new_definition = {
                     'kind': 'typedef',
                     'name': t.get_typedef_name(),
@@ -206,13 +217,14 @@ class Visitor:
                 if self.include_source:
                     new_definition['source'] = self.source_for_cursor(declaration)
                 self.defs.append(new_definition)
-                self.types[declaration.hash] = spelling
         elif t.kind == clang.TypeKind.POINTER:
             result['pointer'], base = self.process_pointer_or_array(t)
+            pointer_base = self.process_type(base)
             if base.kind in (clang.TypeKind.FUNCTIONPROTO, clang.TypeKind.FUNCTIONNOPROTO):
-                result['function'] = self.process_type(base)
+                result['function'] = pointer_base
         elif t.kind in (clang.TypeKind.CONSTANTARRAY, clang.TypeKind.INCOMPLETEARRAY):
             result['array'], base = self.process_pointer_or_array(t)
+            array_base = self.process_type(base)
         elif t.kind in (clang.TypeKind.FUNCTIONPROTO, clang.TypeKind.FUNCTIONNOPROTO):
             result['return_type'] = self.process_type(t.get_result())
             result['arguments'] = [self.process_type(a)
