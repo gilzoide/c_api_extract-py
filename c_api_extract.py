@@ -44,13 +44,16 @@ class Visitor:
     UNION_STRUCT_NAME_RE = re.compile(r'(union|struct)\s+(.+)')
     ENUM_NAME_RE = re.compile(r'enum\s+(.+)')
     MATCH_ALL_RE = re.compile('.*')
-    BUILTIN_C_STRUCTS = {
-        "FILE", "fpos_t",  # stdio.h
-        "va_list",  # stdarg.h
+    BUILTIN_C_DEFINITIONS = {
         "fenv_t", "fexcept_t", "femode_t",  # fenv.h
-        "jmp_buf",  # setjmp.h
         "struct lconv",  # locale.h
+        "va_list",  # stdarg.h
         "struct atomic_flag",  # stdatomic.h
+        "size_t", "ssize_t",  # stddef.h
+        "int8_t", "int16_t", "int32_t", "int64_t", "intptr_t",  # stdint.h
+        "uint8_t", "uint16_t", "uint32_t", "uint64_t", "uintptr_t",  # stdint.h
+        "FILE", "fpos_t",  # stdio.h
+        "jmp_buf",  # setjmp.h
         "thrd_t", "mtx_t", "cnd_t",  # threads.h
         "struct tm", "time_t", "struct timespec",  # time.h
     }
@@ -153,7 +156,7 @@ class Visitor:
         base = t
         spelling = t.spelling
         result = {}
-        if t.kind == clang.TypeKind.RECORD and spelling not in self.BUILTIN_C_STRUCTS:
+        if t.kind == clang.TypeKind.RECORD and spelling not in self.BUILTIN_C_DEFINITIONS:
             m = self.UNION_STRUCT_NAME_RE.match(spelling)
             if m:
                 union_or_struct = m.group(1)
@@ -206,7 +209,7 @@ class Visitor:
                 if self.include_source:
                     new_definition['source'] = self.source_for_cursor(declaration)
                 self.defs.append(new_definition)
-        elif t.kind == clang.TypeKind.TYPEDEF and spelling not in self.BUILTIN_C_STRUCTS:
+        elif t.kind == clang.TypeKind.TYPEDEF and spelling not in self.BUILTIN_C_DEFINITIONS:
             if declaration.hash not in self.types:
                 self.types[declaration.hash] = spelling
                 new_definition = {
