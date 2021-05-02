@@ -220,11 +220,15 @@ class Visitor:
         elif t.kind == clang.TypeKind.POINTER:
             result['pointer'], base = self.process_pointer_or_array(t)
             pointer_base = self.process_type(base)
+            base_spelling = pointer_base['spelling'] if self.type_objects else pointer_base
+            spelling = spelling.replace(base.spelling, base_spelling)
             if base.kind in (clang.TypeKind.FUNCTIONPROTO, clang.TypeKind.FUNCTIONNOPROTO):
                 result['function'] = pointer_base
         elif t.kind in (clang.TypeKind.CONSTANTARRAY, clang.TypeKind.INCOMPLETEARRAY):
             result['array'], base = self.process_pointer_or_array(t)
             array_base = self.process_type(base)
+            base_spelling = array_base['spelling'] if self.type_objects else array_base
+            spelling = spelling.replace(base.spelling, base_spelling)
         elif t.kind in (clang.TypeKind.FUNCTIONPROTO, clang.TypeKind.FUNCTIONNOPROTO):
             result['return_type'] = self.process_type(t.get_result())
             result['arguments'] = [self.process_type(a)
@@ -269,12 +273,12 @@ class Visitor:
 
 
 TYPE_COMPONENTS_RE = re.compile(r'([^(]*\(\**|[^[]*)(.*)')
-def typed_declaration(ty, identifier):
+def typed_declaration(spelling, identifier):
     """
     Utility to form a typed declaration from a C type and identifier.
     This correctly handles array lengths and function pointer arguments.
     """
-    m = TYPE_COMPONENTS_RE.match(ty)
+    m = TYPE_COMPONENTS_RE.match(spelling)
     return '{base_or_return_type}{maybe_space}{identifier}{maybe_array_or_arguments}'.format(
         base_or_return_type=m.group(1),
         maybe_space='' if m.group(2) else ' ',
@@ -284,11 +288,11 @@ def typed_declaration(ty, identifier):
 
 
 BASE_TYPE_RE = re.compile(r'(?:\b(?:const|volatile|restrict)\b\s*)*(([^[*(]+)(\(?).*)')
-def base_type(ty):
+def base_type(spelling):
     """
     Get the base type from spelling, removing const/volatile/restrict specifiers and pointers.
     """
-    m = BASE_TYPE_RE.match(ty)
+    m = BASE_TYPE_RE.match(spelling)
     return (m.group(1) if m.group(3) else m.group(2)).strip()
 
 
