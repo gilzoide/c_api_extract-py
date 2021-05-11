@@ -41,6 +41,7 @@ class CompilationError(Exception):
 
 
 class Visitor:
+    ANONYMOUS_SUB_RE = re.compile(r'(.*/|\W)')
     UNION_STRUCT_NAME_RE = re.compile(r'(union|struct)\s+(.+)')
     ENUM_NAME_RE = re.compile(r'enum\s+(.+)')
     MATCH_ALL_RE = re.compile('.*')
@@ -160,7 +161,7 @@ class Visitor:
             m = self.UNION_STRUCT_NAME_RE.match(spelling)
             if m:
                 union_or_struct = m.group(1)
-                name = re.sub('\\W', '_', m.group(2))
+                name = self.ANONYMOUS_SUB_RE.sub('_', m.group(2))
                 spelling = '{} {}'.format(union_or_struct, name)
             else:
                 assert declaration.kind in (clang.CursorKind.STRUCT_DECL, clang.CursorKind.UNION_DECL)
@@ -195,7 +196,7 @@ class Visitor:
                 self.types[declaration.hash] = spelling
                 m = self.ENUM_NAME_RE.match(t.spelling)
                 if m:
-                    name = re.sub('\\W', '_', m.group(1))
+                    name = self.ANONYMOUS_SUB_RE.sub('_', m.group(1))
                     spelling = "enum {}".format(name)
                 else:
                     name = t.spelling
