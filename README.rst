@@ -66,6 +66,8 @@ Output is a list of definitions, each kind with its format:
       ['<name>', <integer value>]
       # ...
     ],
+    # only present if enum is anonymous
+    'anonymous': true,
     # only present if you pass `--source` to c_api_extract
     'source': '<verbatim definition source code>',
   }
@@ -79,6 +81,8 @@ Output is a list of definitions, each kind with its format:
       [<type spelling or object>, '<name>'],  # name may be "" for nested anonymous structs|unions
       ...
     ],
+    # only present if record is anonymous
+    'anonymous': true,
     # only present if you pass `--source` to c_api_extract
     'source': '<verbatim definition source code>',
   }
@@ -101,7 +105,8 @@ Output is a list of definitions, each kind with its format:
       [<type spelling or object>, '<name>'],
       ...
     ],
-    'variadic': true,  # only present if function is variadic
+    # only present if function is variadic
+    'variadic': true,
     # only present if you pass `--source` to c_api_extract
     'source': '<verbatim definition source code>',
   }
@@ -125,6 +130,8 @@ Output is a list of definitions, each kind with its format:
     'arguments': [{<type object>}, ...],
     # only present if type is a function type and function is variadic
     'variadic': true,
+    # only present if type is a record or enum and record or enum is anonymous
+    'anonymous': true,
     # only present if base type is const qualified
     'const': true,
     # only present if base type is volatile qualified

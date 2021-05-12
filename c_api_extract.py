@@ -161,6 +161,7 @@ class Visitor:
             m = self.UNION_STRUCT_NAME_RE.match(spelling)
             if m:
                 union_or_struct = m.group(1)
+                anonymous = self.ANONYMOUS_SUB_RE.search(m.group(2))
                 name = self.ANONYMOUS_SUB_RE.sub('_', m.group(2))
                 spelling = '{} {}'.format(union_or_struct, name)
             else:
@@ -168,6 +169,7 @@ class Visitor:
                 union_or_struct = ('struct'
                                    if declaration.kind == clang.CursorKind.STRUCT_DECL
                                    else 'union')
+                anonymous = False
                 name = t.spelling
             if declaration.hash not in self.types:
                 self.types[declaration.hash] = spelling
@@ -186,6 +188,8 @@ class Visitor:
                     'name': name,
                     'spelling': spelling,
                 }
+                if anonymous:
+                    new_definition['anonymous'] = True
                 if self.include_source:
                     new_definition['source'] = self.source_for_cursor(declaration)
                 if self.include_size:
@@ -196,9 +200,11 @@ class Visitor:
                 self.types[declaration.hash] = spelling
                 m = self.ENUM_NAME_RE.match(t.spelling)
                 if m:
+                    anonymous = self.ANONYMOUS_SUB_RE.search(m.group(1))
                     name = self.ANONYMOUS_SUB_RE.sub('_', m.group(1))
                     spelling = "enum {}".format(name)
                 else:
+                    anonymous = False
                     name = t.spelling
                 new_definition = {
                     'kind': 'enum',
@@ -207,6 +213,8 @@ class Visitor:
                     'type': self.process_type(declaration.enum_type),
                     'values': [(c.spelling, c.enum_value) for c in declaration.get_children()],
                 }
+                if anonymous:
+                    new_definition['anonymous'] = True
                 if self.include_source:
                     new_definition['source'] = self.source_for_cursor(declaration)
                 self.defs.append(new_definition)
