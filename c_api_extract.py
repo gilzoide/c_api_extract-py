@@ -45,6 +45,7 @@ class Visitor:
     UNION_STRUCT_NAME_RE = re.compile(r'(union|struct)\s+(.+)')
     ENUM_NAME_RE = re.compile(r'enum\s+(.+)')
     MATCH_ALL_RE = re.compile('.*')
+    DEFINE_RE = re.compile(r'#[ \t]*define[ \t]+([a-zA-Z_][a-zA-Z0-9_]*)[ \t]+')
     BUILTIN_C_DEFINITIONS = {
         "fenv_t", "fexcept_t", "femode_t",  # fenv.h
         "struct lconv",  # locale.h
@@ -64,18 +65,13 @@ class Visitor:
         self.typedefs = {}
         self.index = clang.Index.create()
         self.types = {}
+        self.parsed_headers = set()
+        self.potential_constants = []
 
     def parse_header(self, header_path, clang_args=[], include_patterns=[], type_objects=False,
                      include_source=False, include_size=False, include_offset=False):
         include_patterns = [re.compile(p) for p in include_patterns] or [Visitor.MATCH_ALL_RE]
-        clang_cmd = ['clang', '-emit-ast', header_path, '-o', '-']
-        clang_cmd.extend(clang_args)
-        clang_result = subprocess.run(clang_cmd, stdout=subprocess.PIPE)
-        if clang_result.returncode != 0:
-            raise CompilationError
-        with tempfile.NamedTemporaryFile() as ast_file:
-            ast_file.write(clang_result.stdout)
-            tu = self.index.read(ast_file.name)
+        tu = self.run_clang(header_path, clang_args)
 
         self.type_objects = type_objects
         self.include_source = include_source
@@ -85,6 +81,22 @@ class Visitor:
         for cursor in tu.cursor.get_children():
             self.process(cursor, include_patterns)
         del self.open_files
+        self.process_marked_macros(header_path, clang_args)
+
+    def run_clang(self, header_path, clang_args=[], source=None, source_name=None):
+        clang_cmd = ['clang', '-emit-ast', '-o', '-']
+        if source:
+            clang_cmd.extend(('-x', 'c++', '-'))
+        else:
+            clang_cmd.append(header_path)
+        clang_cmd.extend(clang_args)
+        stderr = subprocess.DEVNULL if source else None
+        clang_result = subprocess.run(clang_cmd, input=source, stdout=subprocess.PIPE, stderr=stderr)
+        if clang_result.returncode != 0:
+            raise CompilationError
+        with tempfile.NamedTemporaryFile() as ast_file:
+            ast_file.write(clang_result.stdout)
+            return self.index.read(ast_file.name)
 
     def add_typedef(self, cursor, ty):
         self.typedefs[cursor.hash] = ty
@@ -114,6 +126,9 @@ class Visitor:
             filepath = str(filepath)
             if not any(pattern.search(filepath) for pattern in include_patterns):
                 return
+            if filepath not in self.parsed_headers:
+                self.mark_macros(filepath)
+                self.parsed_headers.add(filepath)
         except AttributeError:
             return
 
@@ -265,7 +280,6 @@ class Visitor:
 
         return result
 
-
     @classmethod
     def process_pointer_or_array(cls, t):
         result = []
@@ -282,6 +296,30 @@ class Visitor:
             else:
                 break
         return result, t
+
+    def mark_macros(self, filepath):
+        with open(filepath) as f:
+            for line in f:
+                m = self.DEFINE_RE.match(line)
+                if m:
+                    self.potential_constants.append(m.group(1))
+
+    def process_marked_macros(self, header_path, clang_args=[]):
+        for identifier in self.potential_constants:
+            try:
+                source = '#include "{}"\nconst auto __value = {};'.format(header_path, identifier)
+                tu = self.run_clang(header_path, clang_args, source.encode('utf-8'))
+                for cursor in tu.cursor.get_children():
+                    if cursor.kind == clang.CursorKind.VAR_DECL and cursor.spelling == '__value':
+                        new_definition = {
+                            'kind': 'const',
+                            'name': identifier,
+                            'type': self.process_type(cursor.type),
+                        }
+                        self.defs.append(new_definition)
+            except CompilationError:
+                # this macro is not a const value, skip
+                pass
 
 
 TYPE_COMPONENTS_RE = re.compile(r'([^(]*\(\**|[^[]*)(.*)')
