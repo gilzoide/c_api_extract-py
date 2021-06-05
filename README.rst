@@ -57,6 +57,13 @@ Output is a list of definitions, each kind with its format:
     'source': '<verbatim definition source code>',
   }
 
+  # constant macro definitions
+  {
+    'kind': 'const',
+    'name': '<name>',
+    'type': <type spelling or object>,  # constant type, is always const
+  }
+
   # enum definitions
   {
     'kind': 'enum',
