@@ -83,7 +83,7 @@ class Visitor:
         del self.open_files
         self.process_marked_macros(header_path, clang_args)
 
-    def run_clang(self, header_path, clang_args=[], source=None, source_name=None):
+    def run_clang(self, header_path, clang_args=[], source=None):
         clang_cmd = ['clang', '-emit-ast', '-o', '-']
         if source:
             clang_cmd.extend(('-x', 'c++', '-'))
@@ -97,12 +97,6 @@ class Visitor:
         with tempfile.NamedTemporaryFile() as ast_file:
             ast_file.write(clang_result.stdout)
             return self.index.read(ast_file.name)
-
-    def add_typedef(self, cursor, ty):
-        self.typedefs[cursor.hash] = ty
-
-    def get_typedef(self, cursor):
-        return self.typedefs.get(cursor.underlying_typedef_type.get_declaration().hash)
 
     def source_for_cursor(self, cursor):
         if not self.include_source:
