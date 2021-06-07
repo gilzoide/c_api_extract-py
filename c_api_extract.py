@@ -168,8 +168,14 @@ class Type:
     def is_integral(self):
         return self.kind in ('uint', 'int')
 
+    def is_unsigned(self):
+        return self.kind == 'uint'
+
     def is_floating_point(self):
         return self.kind == 'float'
+
+    def is_string(self):
+        return self.kind == 'pointer' and len(self.array) == 1 and self.element_type.kind == 'char'
 
     def is_function_pointer(self):
         return self.kind == 'pointer' and hasattr(self, 'function')
@@ -180,8 +186,8 @@ class Type:
     def is_anonymous(self):
         return getattr(self, 'anonymous', False)
 
-    def is_string(self):
-        return self.kind == 'pointer' and len(self.array) == 1 and self.element_type.kind == 'char'
+    def is_string_array(self):
+        return self.kind == 'pointer' and len(self.array) >= 1 and self.element_type.kind == 'char'
 
     def to_dict(self, is_declaration=False):
         result = {
