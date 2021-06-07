@@ -169,40 +169,37 @@ class Type:
         return t
 
     def is_primitive(self):
-        return self.root().kind not in ('typedef', 'enum', 'struct', 'union')
+        return self.kind not in ('typedef', 'enum', 'struct', 'union')
 
     def is_integral(self):
-        return self.root().kind in ('uint', 'int')
+        return self.kind in ('uint', 'int')
 
     def is_unsigned(self):
-        return self.root().kind == 'uint'
+        return self.kind == 'uint'
 
     def is_floating_point(self):
-        return self.root().kind == 'float'
+        return self.kind == 'float'
 
     def is_string(self):
-        root = self.root()
-        return root.kind == 'pointer' and len(root.array) == 1 and root.element_type.kind == 'char'
+        return self.kind == 'pointer' and len(self.array) == 1 and self.element_type.kind == 'char'
 
     def is_pointer(self):
-        return self.root().kind == 'pointer'
+        return self.kind == 'pointer'
 
     def is_function_pointer(self):
-        root = self.root()
-        return root.kind == 'pointer' and hasattr(root, 'function')
+        return self.kind == 'pointer' and hasattr(self, 'function')
 
     def is_variadic(self):
-        return getattr(self.root(), 'variadic', False)
+        return getattr(self, 'variadic', False)
 
     def is_anonymous(self):
-        return getattr(self.root(), 'anonymous', False)
+        return getattr(self, 'anonymous', False)
 
     def is_string_array(self):
-        root = self.root()
-        return root.kind == 'pointer' and len(root.array) >= 1 and root.element_type.kind == 'char'
+        return self.kind == 'pointer' and len(self.array) >= 1 and self.element_type.kind == 'char'
 
     def is_record(self):
-        return self.root().kind in ('struct', 'union')
+        return self.kind in ('struct', 'union')
 
     def to_dict(self, is_declaration=False):
         result = {
