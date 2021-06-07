@@ -60,7 +60,20 @@ class CompilationError(Exception):
     pass
 
 
-class Type:
+class Definition:
+    def __init__(self, kind):
+        self.kind = kind
+
+    def to_dict(self, is_declaration=True):
+        return {
+            'kind': self.kind,
+        }
+
+    def is_record(self):
+        return self.kind in ('struct', 'union')
+
+
+class Type(Definition):
     known_types = OrderedDict()
 
     class Field:
@@ -86,7 +99,7 @@ class Type:
             }
 
     def __init__(self, t):
-        self.kind = ''
+        super().__init__('')
         self.clang_kind = t.kind
         self.spelling = t.spelling
         declaration = t.get_declaration()
@@ -198,9 +211,6 @@ class Type:
     def is_string_array(self):
         return self.kind == 'pointer' and len(self.array) >= 1 and self.element_type.kind == 'char'
 
-    def is_record(self):
-        return self.kind in ('struct', 'union')
-
     def to_dict(self, is_declaration=False):
         result = {
             'kind': self.kind,
@@ -270,9 +280,9 @@ class Type:
         return result, t
 
 
-class Variable:
+class Variable(Definition):
     def __init__(self, cursor):
-        self.kind = 'var'
+        super().__init__('var')
         self.name = cursor.spelling
         self.type = Type.from_clang(cursor.type)
 
@@ -284,9 +294,9 @@ class Variable:
         }
 
 
-class Constant:
+class Constant(Definition):
     def __init__(self, cursor, name):
-        self.kind = 'const'
+        super().__init__('const')
         self.name = name
         self.type = Type.from_clang(cursor.type)
 
@@ -298,7 +308,7 @@ class Constant:
         }
 
 
-class Function:
+class Function(Definition):
     class Argument:
         def __init__(self, cursor):
             self.name = cursor.spelling
@@ -311,7 +321,7 @@ class Function:
             }
 
     def __init__(self, cursor):
-        self.kind = 'function'
+        super().__init__('function')
         self.name = cursor.spelling
         self.return_type = Type.from_clang(cursor.type.get_result())
         self.arguments = [Function.Argument(a) for a in cursor.get_arguments()]
