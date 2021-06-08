@@ -35,7 +35,7 @@ from docopt import docopt
 import clang.cindex as clang
 
 
-__version__ = '0.6.0'
+__version__ = '0.7.0'
 
 ANONYMOUS_SUB_RE = re.compile(r'(.*/|\W)')
 UNION_STRUCT_NAME_RE = re.compile(r'(union|struct)\s+(.+)')
