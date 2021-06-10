@@ -42,6 +42,8 @@ UNION_STRUCT_NAME_RE = re.compile(r'(union|struct)\s+(.+)')
 ENUM_NAME_RE = re.compile(r'enum\s+(.+)')
 MATCH_ALL_RE = re.compile('.*')
 DEFINE_RE = re.compile(r'#[ \t]*define[ \t]+([a-zA-Z_][a-zA-Z0-9_]*)[ \t]+')
+BUILTIN_C_INTS = { "int8_t", "int16_t", "int32_t", "int64_t", "intptr_t", "ssize_t" }
+BUILTIN_C_UINTS = { "uint8_t", "uint16_t", "uint32_t", "uint64_t", "uintptr_t", "size_t" }
 BUILTIN_C_DEFINITIONS = {
     "fenv_t", "fexcept_t", "femode_t",  # fenv.h
     "struct lconv",  # locale.h
@@ -74,7 +76,8 @@ class Definition:
 
 
 class Type(Definition):
-    known_types = OrderedDict()
+    type_declarations = OrderedDict()
+    processed_types = {}
 
     class Field:
         def __init__(self, field_cursor):
@@ -100,11 +103,18 @@ class Type(Definition):
 
     def __init__(self, t):
         super().__init__('')
+        self.clang_type = t
         self.clang_kind = t.kind
         self.spelling = t.spelling
+        self.size = t.get_size()
         declaration = t.get_declaration()
         base = t
-        if t.kind == clang.TypeKind.RECORD and t.spelling not in BUILTIN_C_DEFINITIONS:
+        if t.spelling in BUILTIN_C_INTS:
+            self.kind = 'int'
+        elif t.spelling in BUILTIN_C_UINTS:
+            self.kind = 'uint'
+        elif t.kind == clang.TypeKind.RECORD and t.spelling not in BUILTIN_C_DEFINITIONS:
+            self.processed_types[declaration.hash] = self  # mark early to avoid recursion
             m = UNION_STRUCT_NAME_RE.match(t.spelling)
             if m:
                 union_or_struct = m.group(1)
@@ -121,7 +131,9 @@ class Type(Definition):
             self.kind = union_or_struct
             self.fields = [Type.Field(f) for f in t.get_fields()]
             self.opaque = not self.fields
+            self.type_declarations[declaration.hash] = self
         elif t.kind == clang.TypeKind.ENUM:
+            self.processed_types[declaration.hash] = self  # mark early to avoid recursion
             m = ENUM_NAME_RE.match(t.spelling)
             if m:
                 self.anonymous = bool(ANONYMOUS_SUB_RE.search(m.group(1)))
@@ -133,10 +145,13 @@ class Type(Definition):
             self.kind = 'enum'
             self.type = Type.from_clang(declaration.enum_type)
             self.values = [Type.EnumValue(c.spelling, c.enum_value) for c in declaration.get_children()]
+            self.type_declarations[declaration.hash] = self
         elif t.kind == clang.TypeKind.TYPEDEF and t.spelling not in BUILTIN_C_DEFINITIONS:
+            self.processed_types[declaration.hash] = self  # mark early to avoid recursion
             self.kind = 'typedef'
             self.name = t.get_typedef_name()
             self.type = Type.from_clang(declaration.underlying_typedef_type)
+            self.type_declarations[declaration.hash] = self
         elif t.kind == clang.TypeKind.POINTER:
             self.kind = 'pointer'
             self.array, base = self.process_pointer_or_array(t)
@@ -146,6 +161,11 @@ class Type(Definition):
                 self.function = self.element_type
         elif t.kind in (clang.TypeKind.CONSTANTARRAY, clang.TypeKind.INCOMPLETEARRAY):
             self.kind = 'array'
+            self.array, base = self.process_pointer_or_array(t)
+            self.element_type = Type.from_clang(base)
+            self.spelling = self.spelling.replace(base.spelling, self.element_type.spelling)
+        elif t.kind == clang.TypeKind.VECTOR:
+            self.kind = 'vector'
             self.array, base = self.process_pointer_or_array(t)
             self.element_type = Type.from_clang(base)
             self.spelling = self.spelling.replace(base.spelling, self.element_type.spelling)
@@ -173,16 +193,12 @@ class Type(Definition):
         self.volatile = base.is_volatile_qualified()
         self.restrict = base.is_restrict_qualified()
         self.base = base_type(base.spelling if base is not t else self.spelling)
-        self.size = t.get_size()
 
     def root(self):
         t = self
         while t.kind == 'typedef':
             t = t.type
         return t
-
-    def is_primitive(self):
-        return self.kind not in ('typedef', 'enum', 'struct', 'union')
 
     def is_integral(self):
         return self.kind in ('uint', 'int')
@@ -198,6 +214,19 @@ class Type(Definition):
 
     def is_pointer(self):
         return self.kind == 'pointer'
+
+    def remove_pointer(self):
+        if self.kind == 'pointer':
+            return Type.from_clang(self.clang_type.get_pointee())
+        return self
+
+    def is_array(self):
+        return self.kind == 'array'
+
+    def remove_array(self):
+        if self.kind == 'pointer':
+            return Type.from_clang(self.clang_type.element_type)
+        return self
 
     def is_function_pointer(self):
         return self.kind == 'pointer' and hasattr(self, 'function')
@@ -234,6 +263,8 @@ class Type(Definition):
             result['return_type'] = self.return_type.to_dict()
         if hasattr(self, 'arguments'):
             result['arguments'] = [a.to_dict() for a in self.arguments]
+        if hasattr(self, 'array'):
+            result['array'] = self.array
         if self.is_anonymous():
             result['anonymous'] = True
         if self.is_variadic():
@@ -255,11 +286,9 @@ class Type(Definition):
             # just process inner type
             t = t.get_named_type()
         declaration = t.get_declaration()
-        the_type = cls.known_types.get(declaration.hash)
+        the_type = cls.processed_types.get(declaration.hash)
         if not the_type:
             the_type = Type(t)
-            if not the_type.is_primitive():
-                cls.known_types[declaration.hash] = the_type
         return the_type
 
     @staticmethod
@@ -269,8 +298,8 @@ class Type(Definition):
             if t.kind == clang.TypeKind.POINTER:
                 result.append('*')
                 t = t.get_pointee()
-            elif t.kind == clang.TypeKind.CONSTANTARRAY:
-                result.append(t.get_array_size())
+            elif t.kind in (clang.TypeKind.CONSTANTARRAY, clang.TypeKind.VECTOR):
+                result.append(t.element_count)
                 t = t.element_type
             elif t.kind == clang.TypeKind.INCOMPLETEARRAY:
                 result.append('*')
@@ -358,7 +387,7 @@ class Visitor:
         self.include_offset = include_offset
         for cursor in tu.cursor.get_children():
             self.process(cursor, include_patterns)
-        type_defs = [t for t in Type.known_types.values()]
+        type_defs = [t for t in Type.type_declarations.values()]
         self.defs = type_defs + self.defs
         self.process_marked_macros(header_path, clang_args)
 
