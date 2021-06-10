@@ -235,9 +235,6 @@ class Type(Definition):
     def is_anonymous(self):
         return getattr(self, 'anonymous', False)
 
-    def is_string_array(self):
-        return self.kind == 'pointer' and len(self.array) >= 1 and self.element_type.kind == 'char'
-
     def to_dict(self, is_declaration=False):
         result = {
             'kind': self.kind,
