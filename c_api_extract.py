@@ -223,6 +223,8 @@ class Type(Definition):
 
     def remove_array(self):
         if self.kind == 'pointer':
+            return Type.from_clang(self.clang_type.get_pointee())
+        elif self.kind in ('array', 'vector'):
             return Type.from_clang(self.clang_type.element_type)
         return self
 
