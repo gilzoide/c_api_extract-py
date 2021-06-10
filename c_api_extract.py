@@ -379,7 +379,10 @@ class Visitor:
     def parse_header(self, header_path, clang_args=[], include_patterns=[], type_objects=False,
                      include_source=False, include_size=False, include_offset=False):
         include_patterns = [re.compile(p) for p in include_patterns] or [MATCH_ALL_RE]
-        tu = self.run_clang(header_path, clang_args)
+        with tempfile.NamedTemporaryFile() as ast_file:
+            clang_stdout = self.run_clang(header_path, ['-emit-ast'] + clang_args)
+            ast_file.write(clang_stdout)
+            tu = self.index.read(ast_file.name)
 
         self.type_objects = type_objects
         self.include_source = include_source
@@ -392,19 +395,18 @@ class Visitor:
         self.process_marked_macros(header_path, clang_args)
 
     def run_clang(self, header_path, clang_args=[], source=None):
-        clang_cmd = ['clang', '-emit-ast', '-o', '-']
+        clang_cmd = ['clang']
+        clang_cmd.extend(clang_args)
+        clang_cmd.extend(('-o', '-'))
         if source:
-            clang_cmd.extend(('-x', 'c++', '-'))
+            clang_cmd.append('-')
         else:
             clang_cmd.append(header_path)
-        clang_cmd.extend(clang_args)
         stderr = subprocess.DEVNULL if source else None
         clang_result = subprocess.run(clang_cmd, input=source, stdout=subprocess.PIPE, stderr=stderr)
         if clang_result.returncode != 0:
-            raise CompilationError
-        with tempfile.NamedTemporaryFile() as ast_file:
-            ast_file.write(clang_result.stdout)
-            return self.index.read(ast_file.name)
+            raise CompilationError(clang_result.stderr)
+        return clang_result.stdout
 
     def process(self, cursor, include_patterns):
         try:
@@ -441,16 +443,24 @@ class Visitor:
                     self.potential_constants.append(m.group(1))
 
     def process_marked_macros(self, header_path, clang_args=[]):
-        for identifier in self.potential_constants:
-            try:
-                source = '#include "{}"\nconst auto __value = {};'.format(header_path, identifier)
-                tu = self.run_clang(header_path, clang_args, source.encode('utf-8'))
-                for cursor in tu.cursor.get_children():
-                    if cursor.kind == clang.CursorKind.VAR_DECL and cursor.spelling == '__value':
-                        self.defs.append(Constant(cursor, identifier))
-            except CompilationError:
-                # this macro is not a const value, skip
-                pass
+        with tempfile.NamedTemporaryFile(suffix='.pch') as pch_file:
+            clang_stdout = self.run_clang(header_path, ['-x', 'c++-header', '-Xclang', '-emit-pch'] + clang_args)
+            pch_file.write(clang_stdout)
+
+            clang_args = ['-x', 'c++', '-emit-ast', '-include-pch', pch_file.name] + clang_args
+            for identifier in self.potential_constants:
+                try:
+                    source = '#include "{}"\nconst auto __value = {};'.format(header_path, identifier)
+                    with tempfile.NamedTemporaryFile() as ast_file:
+                        clang_stdout = self.run_clang(header_path, clang_args, source.encode('utf-8'))
+                        ast_file.write(clang_stdout)
+                        tu = self.index.read(ast_file.name)
+                    for cursor in tu.cursor.get_children():
+                        if cursor.kind == clang.CursorKind.VAR_DECL and cursor.spelling == '__value':
+                            self.defs.append(Constant(cursor, identifier))
+                except CompilationError as ex:
+                    # this macro is not a const value, skip
+                    pass
 
 
 TYPE_COMPONENTS_RE = re.compile(r'([^(]*\(\**|[^[]*)(.*)')
