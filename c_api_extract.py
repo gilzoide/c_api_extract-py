@@ -16,11 +16,9 @@ Filtering options:
 Output modifier options:
   --compact               Output minified JSON instead of using 2 space indentations.
   --type-objects          Output type objects instead of simply the type spelling string.
-  --offset                Include "offset" property with record fields `offsetof` in bytes.
-                          Only available with `--type-objects`
-  --source                Include declarations' source code verbatim from processed files.
-  --size                  Include "size" property with types `sizeof` in bytes.
-                          Only available with `--type-objects`
+  --skip-defines          By default, c_api_extract will try compiling object-like macros looking for
+                          constants, which may take long if your header has lots of them. Use this flag
+                          to skip this step.
 """
 
 from collections import OrderedDict
@@ -377,7 +375,7 @@ class Visitor:
         self.potential_constants = []
 
     def parse_header(self, header_path, clang_args=[], include_patterns=[], type_objects=False,
-                     include_source=False, include_size=False, include_offset=False):
+                     skip_defines=False):
         include_patterns = [re.compile(p) for p in include_patterns] or [MATCH_ALL_RE]
         with tempfile.NamedTemporaryFile() as ast_file:
             clang_stdout = self.run_clang(header_path, ['-emit-ast'] + clang_args)
@@ -385,14 +383,13 @@ class Visitor:
             tu = self.index.read(ast_file.name)
 
         self.type_objects = type_objects
-        self.include_source = include_source
-        self.include_size = include_size
-        self.include_offset = include_offset
+        self.skip_defines = skip_defines
         for cursor in tu.cursor.get_children():
             self.process(cursor, include_patterns)
         type_defs = [t for t in Type.type_declarations.values()]
         self.defs = type_defs + self.defs
-        self.process_marked_macros(header_path, clang_args)
+        if not skip_defines:
+            self.process_marked_macros(header_path, clang_args)
 
     def run_clang(self, header_path, clang_args=[], source=None):
         clang_cmd = ['clang']
@@ -417,7 +414,7 @@ class Visitor:
             filepath = str(filepath)
             if not any(pattern.search(filepath) for pattern in include_patterns):
                 return
-            if filepath not in self.parsed_headers:
+            if not self.skip_defines and filepath not in self.parsed_headers:
                 self.mark_macros(filepath)
                 self.parsed_headers.add(filepath)
         except AttributeError:
@@ -502,9 +499,7 @@ def main():
                                               clang_args=opts['<clang_args>'],
                                               include_patterns=opts['--include'],
                                               type_objects=opts['--type-objects'],
-                                              include_source=opts['--source'],
-                                              include_size=opts['--size'],
-                                              include_offset=opts['--offset'])
+                                              skip_defines=opts['--skip-defines'])
         signal(SIGPIPE, SIG_DFL)
         compact = opts.get('--compact')
         print(json.dumps([d.to_dict(is_declaration=True) for d in definitions],
